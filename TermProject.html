@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>My Tools Hub - A Personal Productivity Web App</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+    <link rel="stylesheet" href="styleTermProject.css">
+    <script>
+        'use strict';
+
+// Main application class
+class ProductivityApp {
+    constructor() {
+        this.currentUser = null;
+        this.bookmarkManager = new BookmarkManager();
+        this.todoList = new TodoList();
+        this.calculator = new Calculator();
+        this.noteManager = new NoteManager();
+        
+        this.initAuthListeners();
+        this.initNavigationListeners();
+        this.checkLoginStatus();
+    }
+    
+    // Authentication related methods
+    initAuthListeners() {
+        // Toggle between login and register forms
+        document.getElementById('toggle-auth').addEventListener('click', (e) => {
+            e.preventDefault();
+            const loginForm = document.getElementById('login-form');
+            const registerForm = document.getElementById('register-form');
+            const toggleText = document.getElementById('toggle-auth-text');
+            const toggleLink = document.getElementById('toggle-auth');
+            
+            if (loginForm.style.display !== 'none') {
+                loginForm.style.display = 'none';
+                registerForm.style.display = 'block';
+                toggleText.innerHTML = 'Already have an account? ';
+                toggleLink.textContent = 'Login';
+            } else {
+                loginForm.style.display = 'block';
+                registerForm.style.display = 'none';
+                toggleText.innerHTML = 'New user? ';
+                toggleLink.textContent = 'Register';
+            }
+        });
+        
+        // Register form submission
+        document.getElementById('register-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const username = document.getElementById('register-username').value.trim();
+            const password = document.getElementById('register-password').value;
+            
+            if (this.registerUser(username, password)) {
+                this.showMessage('Registration successful! You can now login.');
+                // Switch to login form
+                document.getElementById('toggle-auth').click();
+            }
+        });
+        
+        // Login form submission
+        document.getElementById('login-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const username = document.getElementById('login-username').value.trim();
+            const password = document.getElementById('login-password').value;
+            
+            if (this.loginUser(username, password)) {
+                this.currentUser = username;
+                this.showAppContent();
+                this.loadUserData();
+            } else {
+                this.showMessage('Invalid username or password!', 'error');
+            }
+        });
+        
+        // Logout button
+        document.getElementById('logout-btn').addEventListener('click', (e) => {
+            e.preventDefault();
+            this.logoutUser();
+        });
+    }
+    
+    registerUser(username, password) {
+        if (!username || !password) {
+            this.showMessage('Username and password are required!', 'error');
+            return false;
+        }
+        
+        // Get existing users or initialize empty object
+        const users = JSON.parse(localStorage.getItem('users') || '{}');
+        
+        // Check if username already exists
+        if (users[username]) {
+            this.showMessage('Username already exists!', 'error');
+            return false;
+        }
+        
+        // Store new user (in real apps, NEVER store passwords in plain text)
+        users[username] = {
+            password: password, // In a real app, use password hashing
+            created: new Date().toISOString()
+        };
+        
+        localStorage.setItem('users', JSON.stringify(users));
+        
+        // Initialize empty data structures for the new user
+        this.initUserData(username);
+        
+        return true;
+    }
+    
+    loginUser(username, password) {
+        if (!username || !password) {
+            return false;
+        }
+        
+        const users = JSON.parse(localStorage.getItem('users') || '{}');
+        
+        // Check if user exists and password matches
+        if (users[username] && users[username].password === password) {
+            // Store login session
+            sessionStorage.setItem('currentUser', username);
+            return true;
+        }
+        
+        return false;
+    }
+    
+    logoutUser() {
+        // Clear session
+        sessionStorage.removeItem('currentUser');
+        this.currentUser = null;
+        
+        // Show login form
+        this.showAuthForm();
+    }
+    
+    checkLoginStatus() {
+        const currentUser = sessionStorage.getItem('currentUser');
+        
+        if (currentUser) {
+            this.currentUser = currentUser;
+            this.showAppContent();
+            this.loadUserData();
+        } else {
+            this.showAuthForm();
+        }
+    }
+    
+    initUserData(username) {
+        // Create empty data structures for each tool
+        localStorage.setItem(`bookmarks_${username}`, JSON.stringify([]));
+        localStorage.setItem(`todos_${username}`, JSON.stringify([]));
+        localStorage.setItem(`notes_${username}`, JSON.stringify([]));
+        // Calculator doesn't need persistent storage
+    }
+    
+    loadUserData() {
+        if (!this.currentUser) return;
+        
+        // Load data for each tool
+        this.bookmarkManager.loadBookmarks(this.currentUser);
+        this.todoList.loadTodos(this.currentUser);
+        this.noteManager.loadNotes(this.currentUser);
+        
+        // Initialize tools UI
+        this.bookmarkManager.renderBookmarks();
+        this.todoList.renderTodos();
+        this.calculator.initCalculator();
+        this.noteManager.renderNotes();
+    }
+    
+    // UI related methods
+    showAuthForm() {
+        document.getElementById('auth-section').style.display = 'block';
+        document.getElementById('app-content').style.display = 'none';
+    }
+    
+    showAppContent() {
+        document.getElementById('auth-section').style.display = 'none';
+        document.getElementById('app-content').style.display = 'block';
+        
+        // Show active tool
+        this.showTool('bookmarks');
+    }
+    
+    showMessage(message, type = 'success') {
+        // Create message element
+        const messageEl = document.createElement('div');
+        messageEl.className = `alert alert-${type === 'error' ? 'danger' : 'success'}`;
+        messageEl.textContent = message;
+        
+        // Get container for message
+        const container = document.querySelector('.container');
+        container.insertBefore(messageEl, container.firstChild);
+        
+        // Auto-remove after 3 seconds
+        setTimeout(() => {
+            messageEl.remove();
+        }, 3000);
+    }
+    
+    // Navigation methods
+    initNavigationListeners() {
+        const navLinks = document.querySelectorAll('.navbar-nav a[data-tool]');
+        
+        navLinks.forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                
+                // Remove active class from all links
+                navLinks.forEach(l => l.parentElement.classList.remove('active'));
+                
+                // Add active class to clicked link
+                e.target.parentElement.classList.add('active');
+                
+                // Show selected tool
+                this.showTool(e.target.dataset.tool);
+            });
+        });
+    }
+    
+    showTool(toolName) {
+        // Hide all tool sections
+        const toolSections = document.querySelectorAll('.tool-section');
+        toolSections.forEach(section => {
+            section.classList.remove('active');
+        });
+        
+        // Show selected tool section
+        document.getElementById(`${toolName}-tool`).classList.add('active');
+    }
+}
+
+// Bookmark Manager Tool
+class BookmarkManager {
+    constructor() {
+        this.bookmarks = [];
+        this.initBookmarkListeners();
+    }
+    
+    initBookmarkListeners() {
+        // Add bookmark form
+        document.getElementById('add-bookmark-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            const title = document.getElementById('bookmark-title').value.trim();
+            const url = document.getElementById('bookmark-url').value.trim();
+            const tags = document.getElementById('bookmark-tags').value.trim();
+            const notes = document.getElementById('bookmark-notes').value.trim();
+            
+            if (title && url) {
+                this.addBookmark(title, url, tags, notes);
+                
+                // Clear form
+                document.getElementById('add-bookmark-form').reset();
+            }
+        });
+        
+        // Filter bookmarks
+        document.getElementById('bookmark-filter').addEventListener('input', (e) => {
+            const filterText = e.target.value.toLowerCase();
+            this.filterBookmarks(filterText);
+        });
+    }
+    
+    loadBookmarks(username) {
+        const bookmarks = localStorage.getItem(`bookmarks_${username}`);
+        this.bookmarks = bookmarks ? JSON.parse(bookmarks) : [];
+    }
+    
+    saveBookmarks(username) {
+        localStorage.setItem(`bookmarks_${username}`, JSON.stringify(this.bookmarks));
+    }
+    
+    addBookmark(title, url, tags, notes) {
+        // Add protocol if missing
+        if (!/^https?:\/\//i.test(url)) {
+            url = 'https://' + url;
+        }
+        
+        const bookmark = {
+            id: Date.now(),
+            title,
+            url,
+            tags: tags.split(',').map(tag => tag.trim()).filter(tag => tag),
+            notes,
+            date: new Date().toISOString()
+        };
+        
+        this.bookmarks.push(bookmark);
+        this.saveBookmarks(app.currentUser);
+        this.renderBookmarks();
+    }
+    
+    deleteBookmark(id) {
+        this.bookmarks = this.bookmarks.filter(bookmark => bookmark.id !== id);
+        this.saveBookmarks(app.currentUser);
+        this.renderBookmarks();
+    }
+    
+    filterBookmarks(filterText) {
+        const bookmarkItems = document.querySelectorAll('.bookmark-item');
+        
+        bookmarkItems.forEach(item => {
+            const title = item.querySelector('.bookmark-title').textContent.toLowerCase();
+            const tags = Array.from(item.querySelectorAll('.bookmark-tag'))
+                .map(tag => tag.textContent.toLowerCase());
+            const notes = item.querySelector('.bookmark-notes').textContent.toLowerCase();
+            
+            if (
+                title.includes(filterText) || 
+                tags.some(tag => tag.includes(filterText)) ||
+                notes.includes(filterText)
+            ) {
+                item.style.display = 'block';
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    }
+    
+    renderBookmarks() {
+        const bookmarkList = document.getElementById('bookmark-list');
+        bookmarkList.innerHTML = '';
+        
+        if (this.bookmarks.length === 0) {
+            bookmarkList.innerHTML = '<p class="text-center">No bookmarks yet. Add your first bookmark above!</p>';
+            return;
+        }
+        
+        this.bookmarks.forEach(bookmark => {
+            const bookmarkEl = document.createElement('div');
+            bookmarkEl.className = 'bookmark-item';
+            bookmarkEl.innerHTML = `
+                <div class="bookmark-header">
+                    <h4 class="bookmark-title">
+                        <a href="${bookmark.url}" target="_blank">${bookmark.title}</a>
+                    </h4>
+                    <button class="btn btn-sm btn-danger delete-bookmark" data-id="${bookmark.id}">
+                        <span class="glyphicon glyphicon-trash"></span>
+                    </button>
+                </div>
+                <div class="bookmark-tags">
+                    ${bookmark.tags.map(tag => `<span class="bookmark-tag">${tag}</span>`).join('')}
+                </div>
+                <p class="bookmark-notes">${bookmark.notes}</p>
+                <small class="text-muted">Added on ${new Date(bookmark.date).toLocaleString()}</small>
+            `;
+            
+            bookmarkList.appendChild(bookmarkEl);
+        });
+        
+        // Add delete event listeners
+        document.querySelectorAll('.delete-bookmark').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const id = parseInt(e.currentTarget.dataset.id);
+                this.deleteBookmark(id);
+            });
+        });
+    }
+}
+
+// Todo List Tool
+class TodoList {
+    constructor() {
+        this.todos = [];
+        this.initTodoListeners();
+    }
+    
+    initTodoListeners() {
+        // Add todo form
+        document.getElementById('add-todo-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            const task = document.getElementById('todo-task').value.trim();
+            
+            if (task) {
+                this.addTodo(task);
+                
+                // Clear form
+                document.getElementById('add-todo-form').reset();
+            }
+        });
+    }
+    
+    loadTodos(username) {
+        const todos = localStorage.getItem(`todos_${username}`);
+        this.todos = todos ? JSON.parse(todos) : [];
+    }
+    
+    saveTodos(username) {
+        localStorage.setItem(`todos_${username}`, JSON.stringify(this.todos));
+    }
+    
+    addTodo(task) {
+        const todo = {
+            id: Date.now(),
+            task,
+            completed: false,
+            date: new Date().toISOString()
+        };
+        
+        this.todos.push(todo);
+        this.saveTodos(app.currentUser);
+        this.renderTodos();
+    }
+    
+    toggleTodo(id) {
+        this.todos = this.todos.map(todo => {
+            if (todo.id === id) {
+                return { ...todo, completed: !todo.completed };
+            }
+            return todo;
+        });
+        
+        this.saveTodos(app.currentUser);
+        this.renderTodos();
+    }
+    
+    deleteTodo(id) {
+        this.todos = this.todos.filter(todo => todo.id !== id);
+        this.saveTodos(app.currentUser);
+        this.renderTodos();
+    }
+    
+    renderTodos() {
+        const todoList = document.getElementById('todo-list');
+        todoList.innerHTML = '';
+        
+        if (this.todos.length === 0) {
+            todoList.innerHTML = '<p class="text-center">No tasks yet. Add your first task above!</p>';
+            return;
+        }
+        
+        this.todos.forEach(todo => {
+            const todoEl = document.createElement('div');
+            todoEl.className = `task-item ${todo.completed ? 'completed' : ''}`;
+            todoEl.innerHTML = `
+                <div class="task-content">
+                    <input type="checkbox" class="task-checkbox" data-id="${todo.id}" ${todo.completed ? 'checked' : ''}>
+                    <span class="task-text ${todo.completed ? 'text-muted' : ''}">${todo.task}</span>
+                </div>
+                <div class="task-actions">
+                    <button class="btn btn-sm btn-danger delete-todo" data-id="${todo.id}">
+                        <span class="glyphicon glyphicon-trash"></span>
+                    </button>
+                </div>
+            `;
+            
+            todoList.appendChild(todoEl);
+        });
+        
+        // Add event listeners
+        document.querySelectorAll('.task-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const id = parseInt(e.target.dataset.id);
+                this.toggleTodo(id);
+            });
+        });
+        
+        document.querySelectorAll('.delete-todo').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const id = parseInt(e.currentTarget.dataset.id);
+                this.deleteTodo(id);
+            });
+        });
+    }
+}
+
+// Calculator Tool
+class Calculator {
+    constructor() {
+        this.currentInput = '0';
+        this.previousInput = '';
+        this.operation = null;
+        this.shouldResetInput = false;
+    }
+    
+    initCalculator() {
+        this.display = document.getElementById('calculator-display');
+        this.updateDisplay();
+        
+        // Add event listeners to calculator buttons
+        document.querySelectorAll('.calculator-button').forEach(button => {
+            button.addEventListener('click', () => {
+                this.handleButtonClick(button.dataset.value, button.dataset.type);
+            });
+        });
+        
+        // Add keyboard support
+        document.addEventListener('keydown', (e) => {
+            this.handleKeyboard(e);
+        });
+    }
+    
+    handleKeyboard(e) {
+        // Numbers
+        if (/^[0-9]$/.test(e.key)) {
+            this.handleButtonClick(e.key, 'number');
+        }
+        // Operators
+        else if (['+', '-', '*', '/'].includes(e.key)) {
+            this.handleButtonClick(e.key, 'operator');
+        }
+        // Equals
+        else if (e.key === 'Enter' || e.key === '=') {
+            this.handleButtonClick('=', 'equals');
+        }
+        // Decimal
+        else if (e.key === '.') {
+            this.handleButtonClick('.', 'decimal');
+        }
+        // Clear
+        else if (e.key === 'Escape' || e.key === 'c' || e.key === 'C') {
+            this.handleButtonClick('C', 'clear');
+        }
+        // Backspace
+        else if (e.key === 'Backspace') {
+            this.handleButtonClick('⌫', 'backspace');
+        }
+    }
+    
+    handleButtonClick(value, type) {
+        switch (type) {
+            case 'number':
+                this.inputNumber(value);
+                break;
+            case 'operator':
+                this.inputOperator(value);
+                break;
+            case 'equals':
+                this.calculate();
+                break;
+            case 'decimal':
+                this.inputDecimal();
+                break;
+            case 'clear':
+                this.clear();
+                break;
+            case 'backspace':
+                this.backspace();
+                break;
+        }
+        
+        this.updateDisplay();
+    }
+    
+    inputNumber(num) {
+        if (this.shouldResetInput) {
+            this.currentInput = num;
+            this.shouldResetInput = false;
+        } else {
+            this.currentInput = this.currentInput === '0' ? num : this.currentInput + num;
+        }
+    }
+    
+    inputOperator(op) {
+        if (this.operation !== null) {
+            this.calculate();
+        }
+        
+        this.previousInput = this.currentInput;
+        this.operation = op;
+        this.shouldResetInput = true;
+    }
+    
+    inputDecimal() {
+        if (this.shouldResetInput) {
+            this.currentInput = '0.';
+            this.shouldResetInput = false;
+            return;
+        }
+        
+        if (!this.currentInput.includes('.')) {
+            this.currentInput += '.';
+        }
+    }
+    
+    calculate() {
+        if (this.operation === null || this.shouldResetInput) return;
+        
+        const prev = parseFloat(this.previousInput);
+        const current = parseFloat(this.currentInput);
+        let result;
+        
+        switch (this.operation) {
+            case '+':
+                result = prev + current;
+                break;
+            case '-':
+                result = prev - current;
+                break;
+            case '*':
+                result = prev * current;
+                break;
+            case '/':
+                result = prev / current;
+                break;
+        }
+        
+        this.currentInput = result.toString();
+        this.operation = null;
+        this.previousInput = '';
+        this.shouldResetInput = true;
+    }
+    
+    clear() {
+        this.currentInput = '0';
+        this.previousInput = '';
+        this.operation = null;
+        this.shouldResetInput = false;
+    }
+    
+    backspace() {
+        if (this.currentInput.length === 1) {
+            this.currentInput = '0';
+        } else {
+            this.currentInput = this.currentInput.slice(0, -1);
+        }
+    }
+    
+    updateDisplay() {
+        this.display.textContent = this.currentInput;
+    }
+}
+
+// Note Manager Tool
+class NoteManager {
+    constructor() {
+        this.notes = [];
+        this.initNoteListeners();
+    }
+    
+    initNoteListeners() {
+        // Add note form
+        document.getElementById('add-note-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            const title = document.getElementById('note-title').value.trim();
+            const content = document.getElementById('note-content').value.trim();
+            
+            if (title && content) {
+                this.addNote(title, content);
+                
+                // Clear form
+                document.getElementById('add-note-form').reset();
+            }
+        });
+        
+        // Search notes
+        document.getElementById('note-search').addEventListener('input', (e) => {
+            const searchText = e.target.value.toLowerCase();
+            this.searchNotes(searchText);
+        });
+    }
+    
+    loadNotes(username) {
+        const notes = localStorage.getItem(`notes_${username}`);
+        this.notes = notes ? JSON.parse(notes) : [];
+    }
+    
+    saveNotes(username) {
+        localStorage.setItem(`notes_${username}`, JSON.stringify(this.notes));
+    }
+    
+    addNote(title, content) {
+        const note = {
+            id: Date.now(),
+            title,
+            content,
+            date: new Date().toISOString()
+        };
+        
+        this.notes.push(note);
+        this.saveNotes(app.currentUser);
+        this.renderNotes();
+    }
+    
+    deleteNote(id) {
+        this.notes = this.notes.filter(note => note.id !== id);
+        this.saveNotes(app.currentUser);
+        this.renderNotes();
+    }
+    
+    searchNotes(searchText) {
+        const noteItems = document.querySelectorAll('.note-item');
+        
+        noteItems.forEach(item => {
+            const title = item.querySelector('.note-title').textContent.toLowerCase();
+            const content = item.querySelector('.note-content').textContent.toLowerCase();
+            
+            if (title.includes(searchText) || content.includes(searchText)) {
+                item.style.display = 'block';
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    }
+    
+    renderNotes() {
+        const noteList = document.getElementById('note-list');
+        noteList.innerHTML = '';
+        
+        if (this.notes.length === 0) {
+            noteList.innerHTML = '<p class="text-center">No notes yet. Add your first note above!</p>';
+            return;
+        }
+        
+        this.notes.forEach(note => {
+            const noteEl = document.createElement('div');
+            noteEl.className = 'note-item';
+            noteEl.innerHTML = `
+                <div class="note-header">
+                    <h4 class="note-title">${note.title}</h4>
+                    <button class="btn btn-sm btn-danger delete-note" data-id="${note.id}">
+                        <span class="glyphicon glyphicon-trash"></span>
+                    </button>
+                </div>
+                <div class="note-content">${note.content.replace(/\n/g, '<br>')}</div>
+                <small class="text-muted">Created on ${new Date(note.date).toLocaleString()}</small>
+            `;
+            
+            noteList.appendChild(noteEl);
+        });
+        
+        // Add delete event listeners
+        document.querySelectorAll('.delete-note').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const id = parseInt(e.currentTarget.dataset.id);
+                this.deleteNote(id);
+            });
+        });
+    }
+}
+
+// Initialize the application when DOM is loaded
+let app;
+document.addEventListener('DOMContentLoaded', () => {
+    app = new ProductivityApp();
+});
+    </script>
+</head>
+<body>
+    <div class="container" id="app-container">
+        <!-- Authentication Form (initially visible) -->
+        <div id="auth-section" class="auth-container">
+            <h2 class="auth-title">Welcome to My Tools Hub</h2>
+            
+            <!-- Login Form -->
+            <form id="login-form" class="auth-form">
+                <div class="form-group">
+                    <label for="login-username">Username</label>
+                    <input type="text" class="form-control" id="login-username" required>
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Password</label>
+                    <input type="password" class="form-control" id="login-password" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Login</button>
+            </form>
+            
+            <!-- Register Form (initially hidden) -->
+            <form id="register-form" class="auth-form" style="display: none;">
+                <div class="form-group">
+                    <label for="register-username">Choose Username</label>
+                    <input type="text" class="form-control" id="register-username" required>
+                </div>
+                <div class="form-group">
+                    <label for="register-password">Choose Password</label>
+                    <input type="password" class="form-control" id="register-password" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Register</button>
+            </form>
+            
+            <div class="auth-toggle">
+                <span id="toggle-auth-text">New user? <a href="#" id="toggle-auth">Register</a></span>
+            </div>
+        </div>
+
+        <!-- App Main Content (initially hidden) -->
+        <div id="app-content" style="display: none;">
+            <!-- Navigation Bar -->
+            <nav class="navbar navbar-default">
+                <div class="container-fluid">
+                    <div class="navbar-header">
+                        <a class="navbar-brand" href="#">My Tools Hub</a>
+                    </div>
+                    <ul class="nav navbar-nav">
+                        <li class="active"><a href="#" data-tool="bookmarks">Bookmarks</a></li>
+                        <li><a href="#" data-tool="todo">To-Do List</a></li>
+                        <li><a href="#" data-tool="calculator">Calculator</a></li>
+                        <li><a href="#" data-tool="notes">Notes</a></li>
+                    </ul>
+                    <ul class="nav navbar-nav navbar-right">
+                        <li><a href="#" id="logout-btn">Logout</a></li>
+                    </ul>
+                </div>
+            </nav>
+            
+            <!-- Bookmark Manager Tool -->
+            <div id="bookmarks-tool" class="tool-section active tool-box">
+                <h3>Bookmark Manager</h3>
+                
+                <form id="add-bookmark-form">
+                    <div class="form-group">
+                        <label for="bookmark-title">Title</label>
+                        <input type="text" class="form-control" id="bookmark-title" placeholder="Website Title" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="bookmark-url">URL</label>
+                        <input type="text" class="form-control" id="bookmark-url" placeholder="https://example.com" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="bookmark-tags">Tags (comma separated)</label>
+                        <input type="text" class="form-control" id="bookmark-tags" placeholder="work, reference, shopping">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="bookmark-notes">Notes</label>
+                        <textarea class="form-control" id="bookmark-notes" placeholder="Add any notes here"></textarea>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">Add Bookmark</button>
+                </form>
+                
+                <hr>
+                
+                <div class="form-group">
+                    <label for="bookmark-filter">Filter Bookmarks</label>
+                    <input type="text" class="form-control" id="bookmark-filter" placeholder="Search by title, tag, or notes">
+                </div>
+                
+                <div id="bookmark-list" class="bookmark-list">
+                    <!-- Bookmarks will be added here dynamically -->
+                </div>
+            </div>
+            
+            <!-- To-Do List Tool -->
+            <div id="todo-tool" class="tool-section tool-box">
+                <h3>To-Do List</h3>
+                
+                <form id="add-todo-form" class="form-inline">
+                    <div class="form-group">
+                        <label for="todo-task" class="sr-only">Task</label>
+                        <input type="text" class="form-control" id="todo-task" placeholder="Enter new task" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add Task</button>
+                </form>
+                
+                <hr>
+                
+                <div id="todo-list" class="todo-list">
+                    <!-- Tasks will be added here dynamically -->
+                </div>
+            </div>
+            
+            <!-- Calculator Tool -->
+            <div id="calculator-tool" class="tool-section tool-box">
+                <h3>Calculator</h3>
+                
+                <div class="calculator">
+                    <div class="calculator-display" id="calculator-display">0</div>
+                    <div class="calculator-buttons">
+                        <button class="calculator-button" data-value="7" data-type="number">7</button>
+                        <button class="calculator-button" data-value="8" data-type="number">8</button>
+                        <button class="calculator-button" data-value="9" data-type="number">9</button>
+                        <button class="calculator-button operator" data-value="/" data-type="operator">÷</button>
+                        
+                        <button class="calculator-button" data-value="4" data-type="number">4</button>
+                        <button class="calculator-button" data-value="5" data-type="number">5</button>
+                        <button class="calculator-button" data-value="6" data-type="number">6</button>
+                        <button class="calculator-button operator" data-value="*" data-type="operator">×</button>
+                        
+                        <button class="calculator-button" data-value="1" data-type="number">1</button>
+                        <button class="calculator-button" data-value="2" data-type="number">2</button>
+                        <button class="calculator-button" data-value="3" data-type="number">3</button>
+                        <button class="calculator-button operator" data-value="-" data-type="operator">−</button>
+                        
+                        <button class
+
+                        <button class="calculator-button" data-value="0" data-type="number">0</button>
+                        <button class="calculator-button" data-value="." data-type="decimal">.</button>
+                        <button class="calculator-button" data-value="=" data-type="equals">=</button>
+                        <button class="calculator-button operator" data-value="+" data-type="operator">+</button>
+                        
+                        <button class="calculator-button clear" data-value="C" data-type="clear">C</button>
+                        <button class="calculator-button backspace" data-value="⌫" data-type="backspace">⌫</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Notes Tool -->
+            <div id="notes-tool" class="tool-section tool-box">
+                <h3>Notes</h3>
+                
+                <form id="add-note-form">
+                    <div class="form-group">
+                        <label for="note-title">Title</label>
+                        <input type="text" class="form-control" id="note-title" placeholder="Note Title" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="note-content">Content</label>
+                        <textarea class="form-control" id="note-content" rows="4" placeholder="Enter note content" required></textarea>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">Save Note</button>
+                </form>
+                
+                <hr>
+                
+                <div class="form-group">
+                    <label for="note-search">Search Notes</label>
+                    <input type="text" class="form-control" id="note-search" placeholder="Search by title or content">
+                </div>
+                
+                <div id="note-list" class="note-list">
+                    <!-- Notes will be added here dynamically -->
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
