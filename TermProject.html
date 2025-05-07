@@ -774,8 +774,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 <button type="submit" class="btn btn-primary">Register</button>
             </form>
             
-            <div class="auth-toggle">
-                <span id="toggle-auth-text">New user? <a href="#" id="toggle-auth">Register</a></span>
+            <!-- Toggle for Login -->
+            <div class="auth-toggle" id="toggle-login-section">
+                <span>New user? <a href="#" id="toggle-auth">Register</a></span>
+            </div>
+
+            <!-- Toggle for Register -->
+            <div class="auth-toggle" id="toggle-register-section" style="display: none;">
+                <span>Already have an account? <a href="#" id="toggle-to-login">Login</a></span>
             </div>
         </div>
 
@@ -798,7 +804,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     </ul>
                 </div>
             </nav>
-            
             <!-- Bookmark Manager Tool -->
             <div id="bookmarks-tool" class="tool-section active tool-box">
                 <h3>Bookmark Manager</h3>
@@ -880,7 +885,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button class="calculator-button" data-value="3" data-type="number">3</button>
                         <button class="calculator-button operator" data-value="-" data-type="operator">−</button>
                         
-                        <button class
 
                         <button class="calculator-button" data-value="0" data-type="number">0</button>
                         <button class="calculator-button" data-value="." data-type="decimal">.</button>
