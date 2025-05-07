@@ -18,8 +18,7 @@
 ---
 
 ## Authentication
-- Lets a user register an account.
-- Saves the account data in the browser’s localStorage.
+- Lets a user register an account. Saves the account data in the browser’s localStorage.
 
 ---
 
