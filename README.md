@@ -19,11 +19,10 @@
 
 ## Authentication
 - Lets a user register an account.
-- Saves the account data in the browser’s **localStorage**.
-- This is also how the data for the other functions (like bookmarks and notes) is saved.
+- Saves the account data in the browser’s localStorage.
 
 ---
 
 ## LocalStorage
-- The website uses your **browser’s local storage** to save your data locally.
-- This ensures that your data stays available even after refreshing or closing the browser.
+- The website uses your browser’s local storage to save your data locally.
+
